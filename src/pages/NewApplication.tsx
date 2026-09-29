@@ -14,9 +14,11 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 export const NewApplication: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -88,7 +90,7 @@ export const NewApplication: React.FC = () => {
           loanTenure: parseInt(formData.loanTenure, 10) || 36,
           interestRate: parseFloat(formData.interestRate) || 10.0,
           creditScore: 735, // Bureau simulated pull
-          assignedOfficer: 'Arjun Kapoor',
+          assignedOfficer: user?.name || 'Arjun Kapoor',
           collateralValue: parseFloat(formData.assets) || 0,
           monthlyIncome: parseFloat(formData.monthlyIncome) || 80000,
           monthlyDebt: parseFloat(formData.monthlyDebt) || 20000,

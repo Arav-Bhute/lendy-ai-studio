@@ -18,10 +18,12 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import { RiskBadge } from '../components/common/RiskBadge';
+import { useAuth } from '../context/AuthContext';
 import type { ApplicationWorkspaceData, CreditMemo, DecisionType } from '../types';
 
 export const CreditMemoPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const [workspace, setWorkspace] = useState<ApplicationWorkspaceData | null>(null);
   const [memo, setMemo] = useState<CreditMemo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,10 +114,13 @@ export const CreditMemoPage: React.FC = () => {
     setDecisionResultMsg('');
 
     try {
+      const reviewerTitle = user?.role === 'admin' ? 'Risk Admin' : 'Lead Underwriter';
+      const reviewerDisplayName = user ? `${user.name} (${reviewerTitle})` : 'Arjun Kapoor (Lead Underwriter)';
+
       const res = await api.submitReview(id, {
         decision,
         notes: decisionNotes || `Underwriting review decision: ${decision}`,
-        reviewerName: 'Arjun Kapoor (Lead Underwriter)',
+        reviewerName: reviewerDisplayName,
       });
 
       setDecisionResultMsg(`Human Decision successfully recorded: ${decision}`);
@@ -552,6 +557,15 @@ Reviewed By: ${memo.reviewedBy || 'Pending sign-off'}
           </div>
         )}
 
+        {user?.role === 'loan_officer' && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <span>
+              <strong>Role Access:</strong> As a Loan Officer, this human sign-off station is read-only. Formal approval and rejection decisions require sign-off by a Lead Underwriter or Risk Admin.
+            </span>
+          </div>
+        )}
+
         <div className="space-y-2">
           <label className="block text-xs font-semibold text-slate-700">
             Authorized Underwriter Assessment Notes & Conditions
@@ -560,8 +574,9 @@ Reviewed By: ${memo.reviewedBy || 'Pending sign-off'}
             rows={3}
             value={decisionNotes}
             onChange={(e) => setDecisionNotes(e.target.value)}
+            disabled={user?.role === 'loan_officer'}
             placeholder="Record justification, mitigation terms, pre-disbursement covenants, or required documentation..."
-            className="w-full text-xs p-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-slate-50/50"
+            className="w-full text-xs p-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-slate-50/50 disabled:opacity-60"
           />
         </div>
 
@@ -574,8 +589,8 @@ Reviewed By: ${memo.reviewedBy || 'Pending sign-off'}
             <button
               type="button"
               onClick={() => handleRecordDecision('REQUEST_INFO')}
-              disabled={submittingDecision}
-              className="flex-1 sm:flex-initial px-4 py-2 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+              disabled={submittingDecision || user?.role === 'loan_officer'}
+              className="flex-1 sm:flex-initial px-4 py-2 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             >
               <AlertCircle className="w-3.5 h-3.5" />
               <span>Request More Info</span>
@@ -584,8 +599,8 @@ Reviewed By: ${memo.reviewedBy || 'Pending sign-off'}
             <button
               type="button"
               onClick={() => handleRecordDecision('REJECT')}
-              disabled={submittingDecision}
-              className="flex-1 sm:flex-initial px-4 py-2 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-300 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+              disabled={submittingDecision || user?.role === 'loan_officer'}
+              className="flex-1 sm:flex-initial px-4 py-2 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-300 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             >
               <XCircle className="w-3.5 h-3.5" />
               <span>Reject Facility</span>
@@ -594,8 +609,8 @@ Reviewed By: ${memo.reviewedBy || 'Pending sign-off'}
             <button
               type="button"
               onClick={() => handleRecordDecision('APPROVE')}
-              disabled={submittingDecision}
-              className="flex-1 sm:flex-initial px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+              disabled={submittingDecision || user?.role === 'loan_officer'}
+              className="flex-1 sm:flex-initial px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>Approve Loan Facility</span>

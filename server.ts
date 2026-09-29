@@ -9,6 +9,8 @@ import { underwritingRouter } from './server/routes/underwriting.js';
 import { memoRouter } from './server/routes/memo.js';
 import { reviewRouter } from './server/routes/review.js';
 import { activityRouter } from './server/routes/activity.js';
+import { requireAuth } from './server/middleware/auth.js';
+import { isSupabaseReady, ensureLoanDocumentsBucket, provisionDemoAuthUsers } from './server/db/supabase.js';
 
 dotenv.config();
 
@@ -22,16 +24,17 @@ async function startServer() {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
-  // API Routes
-  app.use('/api/auth', authRouter);
-  app.use('/api/applications', applicationsRouter);
-  app.use('/api', documentsRouter);
-  app.use('/api', underwritingRouter);
-  app.use('/api', memoRouter);
-  app.use('/api', reviewRouter);
-  app.use('/api', activityRouter);
+  // Initialize Supabase Storage and Demo Auth Users on server boot if configured
+  if (isSupabaseReady()) {
+    try {
+      await ensureLoanDocumentsBucket();
+      await provisionDemoAuthUsers();
+    } catch (err: any) {
+      console.warn('Notice during Supabase startup initialization:', err.message);
+    }
+  }
 
-  // Health check
+  // Health check (public)
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'UP',
@@ -40,6 +43,15 @@ async function startServer() {
       geminiConfigured: !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY'),
     });
   });
+
+  // API Routes
+  app.use('/api/auth', authRouter);
+  app.use('/api/applications', requireAuth, applicationsRouter);
+  app.use('/api', requireAuth, documentsRouter);
+  app.use('/api', requireAuth, underwritingRouter);
+  app.use('/api', requireAuth, memoRouter);
+  app.use('/api', requireAuth, reviewRouter);
+  app.use('/api', requireAuth, activityRouter);
 
   const isProduction = process.env.NODE_ENV === 'production';
 

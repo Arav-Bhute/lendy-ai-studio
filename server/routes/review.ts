@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { store } from '../db/store.js';
+import { requireRole } from '../middleware/auth.js';
 
 export const reviewRouter = Router();
 
 // POST /api/applications/:id/review - Record authorized human underwriter decision
-reviewRouter.post('/applications/:id/review', (req, res) => {
+reviewRouter.post('/applications/:id/review', requireRole(['underwriter', 'admin']), async (req, res) => {
   const appId = req.params.id;
   const { decision, notes, reviewerName } = req.body;
 
@@ -15,11 +16,15 @@ reviewRouter.post('/applications/:id/review', (req, res) => {
     });
   }
 
-  const result = store.recordHumanDecision(
+  const effectiveReviewer =
+    reviewerName ||
+    (req.user ? `${req.user.name} (${req.user.role === 'admin' ? 'Risk Admin' : 'Lead Underwriter'})` : 'Arjun Kapoor (Lead Underwriter)');
+
+  const result = await store.recordHumanDecision(
     appId,
     decision,
     notes || 'Decision recorded following explainable risk review.',
-    reviewerName || 'Arjun Kapoor (Lead Underwriter)'
+    effectiveReviewer
   );
 
   if (!result) {

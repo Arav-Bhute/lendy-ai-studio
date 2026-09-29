@@ -4,8 +4,8 @@ import { store } from '../db/store.js';
 export const applicationsRouter = Router();
 
 // GET /api/applications - List all applications with borrower details
-applicationsRouter.get('/', (req, res) => {
-  const apps = store.getAllApplications();
+applicationsRouter.get('/', async (req, res) => {
+  const apps = await store.getAllApplications();
   res.json({
     success: true,
     data: apps,
@@ -13,9 +13,9 @@ applicationsRouter.get('/', (req, res) => {
 });
 
 // GET /api/applications/:id - Full details for workspace
-applicationsRouter.get('/:id', (req, res) => {
+applicationsRouter.get('/:id', async (req, res) => {
   const id = req.params.id;
-  const data = store.getApplication(id);
+  const data = await store.getApplication(id);
   if (!data) {
     return res.status(404).json({
       success: false,
@@ -29,7 +29,7 @@ applicationsRouter.get('/:id', (req, res) => {
 });
 
 // POST /api/applications - Create new application
-applicationsRouter.post('/', (req, res) => {
+applicationsRouter.post('/', async (req, res) => {
   const { borrower, application, documents } = req.body;
 
   if (!borrower || !application) {
@@ -39,7 +39,7 @@ applicationsRouter.post('/', (req, res) => {
     });
   }
 
-  const created = store.createApplication({
+  const created = await store.createApplication({
     borrower: {
       name: borrower.name || 'New Borrower',
       dateOfBirth: borrower.dateOfBirth || '1990-01-01',
@@ -74,9 +74,9 @@ applicationsRouter.post('/', (req, res) => {
 });
 
 // PATCH /api/applications/:id - Update application status or details
-applicationsRouter.patch('/:id', (req, res) => {
+applicationsRouter.patch('/:id', async (req, res) => {
   const id = req.params.id;
-  const updated = store.updateApplication(id, req.body);
+  const updated = await store.updateApplication(id, req.body);
   if (!updated) {
     return res.status(404).json({
       success: false,

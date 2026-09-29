@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { store } from '../db/store.js';
+import { requireRole } from '../middleware/auth.js';
 
 export const documentsRouter = Router();
 
 // GET /api/applications/:id/documents
-documentsRouter.get('/applications/:id/documents', (req, res) => {
+documentsRouter.get('/applications/:id/documents', async (req, res) => {
   const appId = req.params.id;
-  const docs = Array.from(store.documents.values()).filter(d => d.applicationId === appId);
+  const appData = await store.getApplication(appId);
+  const docs = appData?.documents || Array.from(store.documents.values()).filter(d => d.applicationId === appId);
   res.json({
     success: true,
     data: docs,
@@ -14,7 +16,7 @@ documentsRouter.get('/applications/:id/documents', (req, res) => {
 });
 
 // POST /api/applications/:id/documents - Upload document
-documentsRouter.post('/applications/:id/documents', (req, res) => {
+documentsRouter.post('/applications/:id/documents', async (req, res) => {
   const appId = req.params.id;
   const { documentType, fileName, snippet, fileSizeBytes } = req.body;
 
@@ -25,7 +27,7 @@ documentsRouter.post('/applications/:id/documents', (req, res) => {
     });
   }
 
-  const doc = store.addDocument(appId, {
+  const doc = await store.addDocument(appId, {
     documentType,
     fileName,
     snippet: snippet || `Extracted verified text from ${fileName}.`,
@@ -39,9 +41,9 @@ documentsRouter.post('/applications/:id/documents', (req, res) => {
 });
 
 // DELETE /api/documents/:id - Delete document
-documentsRouter.delete('/documents/:id', (req, res) => {
+documentsRouter.delete('/documents/:id', requireRole(['underwriter', 'admin']), async (req, res) => {
   const docId = req.params.id;
-  const deleted = store.deleteDocument(docId);
+  const deleted = await store.deleteDocument(docId);
   if (!deleted) {
     return res.status(404).json({
       success: false,

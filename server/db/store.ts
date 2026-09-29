@@ -1,5 +1,7 @@
 import { calculateEMI, calculateDTI, calculateLTV, calculateFreeCashFlow, calculateDSCR } from '../calculations/financialEngine.js';
 import { evaluatePolicies } from '../policies/policyEngine.js';
+import { supabaseRepo } from './supabaseRepository.js';
+import { isSupabaseReady } from './supabase.js';
 
 export interface User {
   id: string;
@@ -138,6 +140,42 @@ class InMemoryStore {
 
   constructor() {
     this.seedInitialData();
+    this.syncWithSupabase();
+  }
+
+  async syncWithSupabase() {
+    if (!isSupabaseReady()) return;
+    try {
+      await supabaseRepo.init();
+      const apps = await supabaseRepo.getApplications();
+      if (apps && apps.length > 0) {
+        for (const app of apps) {
+          this.applications.set(app.id, {
+            id: app.id,
+            borrowerId: app.borrowerId,
+            loanAmount: app.loanAmount,
+            loanPurpose: app.loanPurpose,
+            loanTenure: app.loanTenure,
+            interestRate: app.interestRate,
+            creditScore: app.creditScore,
+            overallRisk: app.overallRisk,
+            status: app.status,
+            assignedOfficer: app.assignedOfficer,
+            collateralValue: app.collateralValue,
+            monthlyIncome: app.monthlyIncome,
+            monthlyDebt: app.monthlyDebt,
+            createdAt: app.createdAt,
+            updatedAt: app.updatedAt,
+          });
+        }
+      }
+      const logs = await supabaseRepo.getAuditLogs();
+      if (logs && logs.length > 0) {
+        this.auditLogs = logs;
+      }
+    } catch (err: any) {
+      console.warn('Supabase sync notice:', err.message);
+    }
   }
 
   seedInitialData() {
@@ -555,7 +593,37 @@ class InMemoryStore {
   }
 
   // --- Applications ---
-  getAllApplications() {
+  async getAllApplications() {
+    if (isSupabaseReady()) {
+      try {
+        const apps = await supabaseRepo.getApplications();
+        if (apps && apps.length > 0) {
+          for (const app of apps) {
+            this.applications.set(app.id, {
+              id: app.id,
+              borrowerId: app.borrowerId,
+              loanAmount: app.loanAmount,
+              loanPurpose: app.loanPurpose,
+              loanTenure: app.loanTenure,
+              interestRate: app.interestRate,
+              creditScore: app.creditScore,
+              overallRisk: app.overallRisk,
+              status: app.status,
+              assignedOfficer: app.assignedOfficer,
+              collateralValue: app.collateralValue,
+              monthlyIncome: app.monthlyIncome,
+              monthlyDebt: app.monthlyDebt,
+              createdAt: app.createdAt,
+              updatedAt: app.updatedAt,
+            });
+          }
+          return apps;
+        }
+      } catch (err: any) {
+        console.warn('Error fetching applications from Supabase:', err.message);
+      }
+    }
+
     return Array.from(this.applications.values()).map(app => {
       const borrower = this.borrowers.get(app.borrowerId);
       return {
@@ -568,14 +636,38 @@ class InMemoryStore {
     });
   }
 
-  getApplication(id: string) {
-    const app = this.applications.get(id);
-    if (!app) return null;
-    const borrower = this.borrowers.get(app.borrowerId);
-    const docs = Array.from(this.documents.values()).filter(d => d.applicationId === id);
+  async getApplication(id: string) {
+    let app: LoanApplication | null = null;
+    let borrower: Borrower | null = null;
+    let docs: DocumentRecord[] = [];
+    let appFindings: UnderwritingFinding[] = [];
+    let memo: CreditMemo | null = null;
+
+    if (isSupabaseReady()) {
+      try {
+        const supData = await supabaseRepo.getApplication(id);
+        if (supData && supData.application) {
+          app = supData.application;
+          borrower = supData.borrower;
+          docs = supData.documents;
+          appFindings = supData.findings;
+          memo = supData.memo;
+        }
+      } catch (err: any) {
+        console.warn('Error fetching application from Supabase:', err.message);
+      }
+    }
+
+    if (!app) {
+      app = this.applications.get(id) || null;
+      if (!app) return null;
+      borrower = this.borrowers.get(app.borrowerId) || null;
+      docs = Array.from(this.documents.values()).filter(d => d.applicationId === id);
+      appFindings = this.findings.get(id) || [];
+      memo = this.memos.get(id) || null;
+    }
+
     const extracted = this.extractedData.get(id) || [];
-    const appFindings = this.findings.get(id) || [];
-    const memo = this.memos.get(id);
 
     // Compute deterministic financial metrics
     const emiResult = calculateEMI(app.loanAmount, app.interestRate, app.loanTenure);
@@ -601,6 +693,17 @@ class InMemoryStore {
       monthlyIncome: app.monthlyIncome,
       yearsEmployed: borrower?.yearsEmployed || 1.0,
     });
+
+    if (isSupabaseReady()) {
+      supabaseRepo.saveMetrics(id, {
+        emi: emiResult,
+        proposedDTI: dtiResult.proposedDTI,
+        ltv: ltvResult,
+        freeCashFlow: fcfResult,
+        dscr: dscrResult,
+      }).catch(() => {});
+      supabaseRepo.savePolicyChecks(id, policies).catch(() => {});
+    }
 
     return {
       application: app,
@@ -672,6 +775,12 @@ class InMemoryStore {
       borrower: borrower.name,
     });
 
+    if (isSupabaseReady()) {
+      supabaseRepo.createApplication(data).catch((err: any) =>
+        console.warn('Supabase createApplication async notice:', err.message)
+      );
+    }
+
     return { application: newApp, borrower };
   }
 
@@ -680,6 +789,13 @@ class InMemoryStore {
     if (!app) return null;
     const updated = { ...app, ...updates, updatedAt: new Date().toISOString() };
     this.applications.set(id, updated);
+
+    if (isSupabaseReady()) {
+      supabaseRepo.updateApplication(id, updates).catch((err: any) =>
+        console.warn('Supabase updateApplication async notice:', err.message)
+      );
+    }
+
     return updated;
   }
 
@@ -691,7 +807,7 @@ class InMemoryStore {
       applicationId: appId,
       documentType: doc.documentType,
       fileName: doc.fileName,
-      storagePath: `vault/${appId}/${doc.fileName}`,
+      storagePath: `loan-documents/${appId}/${doc.fileName}`,
       fileSizeBytes: doc.fileSizeBytes || 1500000,
       processingStatus: 'PROCESSED',
       createdAt: new Date().toISOString(),
@@ -704,6 +820,12 @@ class InMemoryStore {
       fileName: doc.fileName
     });
 
+    if (isSupabaseReady()) {
+      supabaseRepo.addDocument(appId, doc).catch((err: any) =>
+        console.warn('Supabase addDocument async notice:', err.message)
+      );
+    }
+
     return newDoc;
   }
 
@@ -714,6 +836,13 @@ class InMemoryStore {
     this.addAuditLog(doc.applicationId, 'usr-1', 'Underwriter', 'DOCUMENT_DELETED', {
       fileName: doc.fileName
     });
+
+    if (isSupabaseReady()) {
+      supabaseRepo.deleteDocument(docId).catch((err: any) =>
+        console.warn('Supabase deleteDocument async notice:', err.message)
+      );
+    }
+
     return true;
   }
 
@@ -731,6 +860,12 @@ class InMemoryStore {
       findingsCount: newFindings.length,
       overallRisk
     });
+
+    if (isSupabaseReady()) {
+      supabaseRepo.saveFindings(appId, newFindings, overallRisk).catch((err: any) =>
+        console.warn('Supabase saveFindings async notice:', err.message)
+      );
+    }
   }
 
   updateFindingStatus(appId: string, findingId: string, status: 'FLAGGED' | 'REVIEWED' | 'DISMISSED', notes?: string) {
@@ -747,6 +882,13 @@ class InMemoryStore {
       status,
       notes
     });
+
+    if (isSupabaseReady()) {
+      supabaseRepo.updateFindingStatus(findingId, status, notes).catch((err: any) =>
+        console.warn('Supabase updateFindingStatus async notice:', err.message)
+      );
+    }
+
     return item;
   }
 
@@ -773,6 +915,13 @@ class InMemoryStore {
       version,
       generatedBy
     });
+
+    if (isSupabaseReady()) {
+      supabaseRepo.saveCreditMemo(appId, content, generatedBy, version).catch((err: any) =>
+        console.warn('Supabase saveCreditMemo async notice:', err.message)
+      );
+    }
+
     return memo;
   }
 
@@ -805,6 +954,12 @@ class InMemoryStore {
       newStatus: app.status
     });
 
+    if (isSupabaseReady()) {
+      supabaseRepo.recordHumanDecision(appId, decision, notes, reviewerName, app.status).catch((err: any) =>
+        console.warn('Supabase recordHumanDecision async notice:', err.message)
+      );
+    }
+
     return { application: app, memo };
   }
 
@@ -820,10 +975,28 @@ class InMemoryStore {
       createdAt: new Date().toISOString()
     };
     this.auditLogs.unshift(log);
+
+    if (isSupabaseReady()) {
+      supabaseRepo.addAuditLog(log).catch((err: any) =>
+        console.warn('Supabase addAuditLog async notice:', err.message)
+      );
+    }
+
     return log;
   }
 
-  getAuditLogs(applicationId?: string) {
+  async getAuditLogs(applicationId?: string) {
+    if (isSupabaseReady()) {
+      try {
+        const supLogs = await supabaseRepo.getAuditLogs(applicationId);
+        if (supLogs && supLogs.length > 0) {
+          return supLogs;
+        }
+      } catch (err: any) {
+        console.warn('Error fetching audit logs from Supabase:', err.message);
+      }
+    }
+
     if (applicationId) {
       return this.auditLogs.filter(l => l.applicationId === applicationId);
     }

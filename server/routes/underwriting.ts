@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { store } from '../db/store.js';
 import { runUnderwritingAIAnalysis } from '../gemini/client.js';
+import { requireRole } from '../middleware/auth.js';
 
 export const underwritingRouter = Router();
 
 // POST /api/applications/:id/analyze - Trigger AI Underwriting Analysis
 underwritingRouter.post('/applications/:id/analyze', async (req, res) => {
   const appId = req.params.id;
-  const appData = store.getApplication(appId);
+  const appData = await store.getApplication(appId);
 
   if (!appData) {
     return res.status(404).json({
@@ -55,7 +56,7 @@ underwritingRouter.post('/applications/:id/analyze', async (req, res) => {
     // Save findings to store
     store.saveFindings(appId, analysis.findings, analysis.overallRisk);
 
-    const updatedApp = store.getApplication(appId);
+    const updatedApp = await store.getApplication(appId);
 
     res.json({
       success: true,
@@ -84,9 +85,10 @@ underwritingRouter.post('/applications/:id/analyze', async (req, res) => {
 });
 
 // GET /api/applications/:id/findings
-underwritingRouter.get('/applications/:id/findings', (req, res) => {
+underwritingRouter.get('/applications/:id/findings', async (req, res) => {
   const appId = req.params.id;
-  const list = store.findings.get(appId) || [];
+  const appData = await store.getApplication(appId);
+  const list = appData?.findings || store.findings.get(appId) || [];
   res.json({
     success: true,
     data: list,
@@ -94,9 +96,9 @@ underwritingRouter.get('/applications/:id/findings', (req, res) => {
 });
 
 // GET /api/applications/:id/metrics
-underwritingRouter.get('/applications/:id/metrics', (req, res) => {
+underwritingRouter.get('/applications/:id/metrics', async (req, res) => {
   const appId = req.params.id;
-  const appData = store.getApplication(appId);
+  const appData = await store.getApplication(appId);
   if (!appData) {
     return res.status(404).json({
       success: false,
@@ -110,9 +112,9 @@ underwritingRouter.get('/applications/:id/metrics', (req, res) => {
 });
 
 // GET /api/applications/:id/policies
-underwritingRouter.get('/applications/:id/policies', (req, res) => {
+underwritingRouter.get('/applications/:id/policies', async (req, res) => {
   const appId = req.params.id;
-  const appData = store.getApplication(appId);
+  const appData = await store.getApplication(appId);
   if (!appData) {
     return res.status(404).json({
       success: false,
@@ -126,7 +128,7 @@ underwritingRouter.get('/applications/:id/policies', (req, res) => {
 });
 
 // PATCH /api/applications/:id/findings/:findingId - Underwriter signs off / reviews finding
-underwritingRouter.patch('/applications/:id/findings/:findingId', (req, res) => {
+underwritingRouter.patch('/applications/:id/findings/:findingId', requireRole(['underwriter', 'admin']), async (req, res) => {
   const { id, findingId } = req.params;
   const { status, reviewerNotes } = req.body;
 

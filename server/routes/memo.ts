@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { store } from '../db/store.js';
 import { generateCreditMemoAI } from '../gemini/client.js';
+import { requireRole } from '../middleware/auth.js';
 
 export const memoRouter = Router();
 
 // POST /api/applications/:id/memo/generate - Generate or regenerate credit memo
-memoRouter.post('/applications/:id/memo/generate', async (req, res) => {
+memoRouter.post('/applications/:id/memo/generate', requireRole(['underwriter', 'admin']), async (req, res) => {
   const appId = req.params.id;
-  const appData = store.getApplication(appId);
+  const appData = await store.getApplication(appId);
 
   if (!appData) {
     return res.status(404).json({
@@ -17,7 +18,7 @@ memoRouter.post('/applications/:id/memo/generate', async (req, res) => {
   }
 
   try {
-    const findingsList = store.findings.get(appId) || [];
+    const findingsList = appData.findings || store.findings.get(appId) || [];
     const metricsSummary = `
 - Gross Monthly Income: ₹${appData.application.monthlyIncome.toLocaleString('en-IN')}
 - Existing Debt: ₹${appData.application.monthlyDebt.toLocaleString('en-IN')}
@@ -58,7 +59,7 @@ memoRouter.post('/applications/:id/memo/generate', async (req, res) => {
       documentsSummary,
     });
 
-    const memo = store.saveCreditMemo(appId, memoContent);
+    const memo = await store.saveCreditMemo(appId, memoContent);
 
     res.json({
       success: true,
@@ -74,9 +75,10 @@ memoRouter.post('/applications/:id/memo/generate', async (req, res) => {
 });
 
 // GET /api/applications/:id/memo - Retrieve existing credit memo
-memoRouter.get('/applications/:id/memo', (req, res) => {
+memoRouter.get('/applications/:id/memo', async (req, res) => {
   const appId = req.params.id;
-  const memo = store.memos.get(appId);
+  const appData = await store.getApplication(appId);
+  const memo = appData?.memo || store.memos.get(appId);
   if (!memo) {
     return res.json({
       success: true,
@@ -90,7 +92,7 @@ memoRouter.get('/applications/:id/memo', (req, res) => {
 });
 
 // PATCH /api/applications/:id/memo - Update/edit existing credit memo content
-memoRouter.patch('/applications/:id/memo', (req, res) => {
+memoRouter.patch('/applications/:id/memo', requireRole(['underwriter', 'admin']), async (req, res) => {
   const appId = req.params.id;
   const { content } = req.body;
 
@@ -101,7 +103,7 @@ memoRouter.patch('/applications/:id/memo', (req, res) => {
     });
   }
 
-  const updatedMemo = store.saveCreditMemo(appId, content, 'Human Underwriter (Manual Edit)');
+  const updatedMemo = await store.saveCreditMemo(appId, content, 'Human Underwriter (Manual Edit)');
   res.json({
     success: true,
     data: updatedMemo,

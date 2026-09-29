@@ -99,15 +99,33 @@ export async function runUnderwritingAIAnalysis(appPayload: {
   if (client) {
     try {
       const prompt = buildUnderwritingPrompt(appPayload);
-      const response = await client.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          systemInstruction: UNDERWRITING_SYSTEM_INSTRUCTION,
-          responseMimeType: 'application/json',
-          temperature: 0.2,
-        },
-      });
+      let response;
+      try {
+        response = await client.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: prompt,
+          config: {
+            systemInstruction: UNDERWRITING_SYSTEM_INSTRUCTION,
+            responseMimeType: 'application/json',
+            temperature: 0.2,
+          },
+        });
+      } catch (firstErr: any) {
+        if (firstErr?.message?.includes('quota') || firstErr?.message?.includes('resource_exhausted')) {
+          console.warn('Primary model quota reached, attempting fallback to gemini-3.8-flash...');
+          response = await client.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: prompt,
+            config: {
+              systemInstruction: UNDERWRITING_SYSTEM_INSTRUCTION,
+              responseMimeType: 'application/json',
+              temperature: 0.2,
+            },
+          });
+        } else {
+          throw firstErr;
+        }
+      }
 
       const text = response.text;
       if (text) {
@@ -321,15 +339,32 @@ export async function generateCreditMemoAI(appData: any): Promise<CreditMemoCont
   if (client) {
     try {
       const prompt = buildMemoPrompt(appData);
-      const response = await client.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          systemInstruction: 'You are Lendy Credit Copilot drafting an enterprise credit memo. Produce factual, rigorous, evidence-linked underwriting memos. Never make autonomous approvals.',
-          responseMimeType: 'application/json',
-          temperature: 0.2,
-        },
-      });
+      let response;
+      try {
+        response = await client.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: prompt,
+          config: {
+            systemInstruction: 'You are Lendy Credit Copilot drafting an enterprise credit memo. Produce factual, rigorous, evidence-linked underwriting memos. Never make autonomous approvals.',
+            responseMimeType: 'application/json',
+            temperature: 0.2,
+          },
+        });
+      } catch (firstErr: any) {
+        if (firstErr?.message?.includes('quota') || firstErr?.message?.includes('resource_exhausted')) {
+          response = await client.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: prompt,
+            config: {
+              systemInstruction: 'You are Lendy Credit Copilot drafting an enterprise credit memo. Produce factual, rigorous, evidence-linked underwriting memos. Never make autonomous approvals.',
+              responseMimeType: 'application/json',
+              temperature: 0.2,
+            },
+          });
+        } else {
+          throw firstErr;
+        }
+      }
 
       const text = response.text;
       if (text) {

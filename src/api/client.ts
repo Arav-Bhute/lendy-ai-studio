@@ -8,14 +8,45 @@ import type {
   AuditLog,
   DecisionType,
 } from '../types';
+import { getSupabase, initSupabase } from '../lib/supabase';
+
+async function getAuthHeader(): Promise<string | null> {
+  try {
+    const client = getSupabase() || (await initSupabase());
+    if (client) {
+      const { data } = await client.auth.getSession();
+      if (data?.session?.access_token) {
+        return `Bearer ${data.session.access_token}`;
+      }
+    }
+  } catch (err) {
+    // ignore
+  }
+
+  const demoToken = localStorage.getItem('lendy_demo_token');
+  if (demoToken) {
+    return `Bearer ${demoToken}`;
+  }
+
+  return null;
+}
 
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string> || {}),
+  };
+
+  if (!headers['Authorization']) {
+    const authHeader = await getAuthHeader();
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+  }
+
   const res = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options?.headers || {}),
-    },
+    headers,
   });
 
   const body = await res.json();

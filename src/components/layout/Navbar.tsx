@@ -1,9 +1,12 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { PlusCircle, ShieldCheck, UserCheck } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { PlusCircle, ShieldCheck, UserCheck, LogOut } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
 
   const navLinks = [
     { label: 'Dashboard', path: '/' },
@@ -17,6 +20,18 @@ export const Navbar: React.FC = () => {
     if (path !== '/' && location.pathname.startsWith(path)) return true;
     return false;
   };
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
+  const roleLabel =
+    user?.role === 'loan_officer'
+      ? 'Loan Officer'
+      : user?.role === 'admin'
+      ? 'Risk Admin'
+      : 'Lead Underwriter';
 
   return (
     <header className="h-14 border-b border-slate-200 bg-white sticky top-0 z-30 flex items-center justify-between px-6">
@@ -46,11 +61,21 @@ export const Navbar: React.FC = () => {
 
       {/* Zone 3: 1-2 primary actions */}
       <div className="flex items-center gap-3">
-        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg bg-slate-50">
-          <UserCheck className="w-3.5 h-3.5 text-blue-600" />
-          <span className="font-medium text-slate-800">Arjun Kapoor</span>
-          <span className="text-slate-400">· Lead Underwriter</span>
-        </div>
+        {user && (
+          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg bg-slate-50">
+            <UserCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <span className="font-medium text-slate-800">{user.name || user.email.split('@')[0]}</span>
+            <span className="text-slate-400">· {roleLabel}</span>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="ml-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer p-0.5"
+              title="Sign Out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         <Link
           to="/applications/new"
